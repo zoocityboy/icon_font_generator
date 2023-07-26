@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:args/command_runner.dart';
 import 'package:icon_font_generator/generate_flutter_class.dart';
 import 'package:icon_font_generator/templates/npm_package.dart';
@@ -7,14 +8,17 @@ import 'package:icon_font_generator/utils.dart';
 import 'package:path/path.dart' as path;
 
 void main(List<String> args) async {
-  final runner = CommandRunner('icon_font_generator', 'Generate you own fonts')
-    ..addCommand(GenerateCommand());
+  final runner = CommandRunner('icon_font_generator', 'Generate you own fonts')..addCommand(GenerateCommand());
   try {
     await runner.run(['gen', ...args]);
   } on UsageException catch (error) {
     print(error);
     exit(1);
   }
+}
+
+extension NormalizePath on String {
+  String get normalized => path.normalize(this);
 }
 
 class GenerateCommand extends Command {
@@ -82,8 +86,7 @@ class GenerateCommand extends Command {
 
   @override
   Future<void> run() async {
-    final nodeCheckResult =
-        await Process.run('node', ['--version'], runInShell: true);
+    final nodeCheckResult = await Process.run('node', ['--version'], runInShell: true);
     if (nodeCheckResult.exitCode != 0) {
       print('Please install Node.JS. Recommended v10+');
     }
@@ -97,19 +100,17 @@ class GenerateCommand extends Command {
       exit(1);
     }
 
-    final genRootDir = Directory.fromUri(Platform.script.resolve('..'));
+    final genRootDir = Directory.current.parent;
 
     final npmPackage = File(path.join(genRootDir.path, 'package.json'));
     if (!npmPackage.existsSync()) {
       await npmPackage.writeAsString(npmPackageTemplate);
     }
 
-    final tempSourceDirectory =
-        Directory.fromUri(genRootDir.uri.resolve('temp_icons'));
-    final tempOutDirectory =
-        Directory.fromUri(genRootDir.uri.resolve('temp_font'));
-     final iconsMap = File(path.join(tempOutDirectory.path,
-        path.basenameWithoutExtension(argResults!['out-font']) + '.json'));
+    final tempSourceDirectory = Directory(path.join(genRootDir.path, 'temp_icons'));
+    final tempOutDirectory = Directory(path.join(genRootDir.path, 'temp_font'));
+    final iconsMap =
+        File(path.join(tempOutDirectory.path, '${path.basenameWithoutExtension(argResults!['out-font'])}.json'));
     if (tempSourceDirectory.existsSync()) {
       await tempSourceDirectory.delete(recursive: true);
     }
@@ -133,17 +134,11 @@ class GenerateCommand extends Command {
     // icon-font-generator requires package: `ttf2woff2`
     // we do not need him and requires a python
     final gypErr = 'gyp ERR!';
-    await stderr.addStream(nodeInstallDependencies.stderr
-        .where((bytes) => !utf8.decode(bytes).contains(gypErr)));
+    await stderr.addStream(nodeInstallDependencies.stderr.where((bytes) => !utf8.decode(bytes).contains(gypErr)));
 
-    final sourceIconsDirectory = Directory.fromUri(Directory.current.uri
-        .resolve(argResults!['from'].replaceAll('\\', '/')));
-    final outIconsFile = File(Directory.fromUri(Directory.current.uri
-          .resolve(argResults!['out-font'].replaceAll('\\', '/')))
-        .path);
-    final outFlutterClassFile = File(Directory.fromUri(Directory.current.uri
-            .resolve(argResults!['out-flutter'].replaceAll('\\', '/')))
-        .path);
+    final sourceIconsDirectory = Directory(path.join(Directory.current.path, argResults!['from']));
+    final outIconsFile = File(path.join(Directory.current.path, argResults!['out-font']));
+    final outFlutterClassFile = File(path.join(Directory.current.path, argResults!['out-flutter']));
 
     await tempSourceDirectory.create();
     await tempOutDirectory.create();
@@ -157,7 +152,7 @@ class GenerateCommand extends Command {
     final generateFont = await Process.start(
       path.join(
         genRootDir.path,
-        'node_modules/.bin/fantasticon${Platform.isWindows ? '.cmd' : ''}',
+        'node_modules${Platform.pathSeparator}.bin${Platform.pathSeparator}fantasticon${Platform.isWindows ? '.cmd' : ''}',
       ),
       [
         path.absolute(tempSourceDirectory.path),
@@ -175,6 +170,7 @@ class GenerateCommand extends Command {
         'json',
         '--font-types',
         'ttf',
+        '--debug'
       ],
       workingDirectory: genRootDir.path,
       runInShell: true,
@@ -188,8 +184,7 @@ class GenerateCommand extends Command {
       return utf8.encode(message);
     }));
     final stdlib = 'Invalid member of stdlib';
-    await stderr.addStream(generateFont.stderr
-        .where((bytes) => !utf8.decode(bytes).contains(stdlib)));
+    await stderr.addStream(generateFont.stderr.where((bytes) => !utf8.decode(bytes).contains(stdlib)));
 
     await File(path.join(
       tempOutDirectory.path,
